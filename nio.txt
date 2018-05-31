@@ -1,0 +1,222 @@
+一、NIO -- new IO  -- NonBlocking IO
+1.概述
+	NIO是JDK1.4 中提出的一套新的IO机制，区别与传统的BIO（Blocking IO）的同步阻塞工作方式，NIO是一种同步非阻塞式IO.
+
+	阻塞、非阻塞：
+		从线程的角度考虑 ，线程挂起 不在抢夺CPU 则称为线程被阻塞
+
+	同步、异步：
+		从并发参与者角度考虑，多个参与者是否需要互相等待协调，如果任务的执行需要双方互相等待、互相协调，则为同步，否则为异步.
+
+	NIO需求背景：
+		传统服务器结构，针对于每一个客户端都需要在服务器端创建对应线程来处理，一个客户端一个线程，而线程开辟运行是非常耗费资源的，并且服务器所能支持的最大并发线程数量是非常有限的，所以当高并发到来时，服务器一次创建过多线程，会存在性能瓶颈，甚至宕机。
+		所以我们想到用少量的线程同时处理多个客户端的连接
+		然而在 传统BIO 中 ACCEPT CONNECT READ WRITE 方法会产生阻塞 一旦阻塞住线程，该线程被挂起后就没有机会为其它客户端服务，所无法实现少量线程处理多个客户端.
+		为了解决这些问题 ，NIO技术出现了。
+	 
+
+2.特点
+	BIO:面向流操作字节字符,具有方向性,同步阻塞式IO
+		InputStream OutputStream Reader Writer
+
+	NIO:面向通道操作缓冲区，可以双向传输数据,同步非阻塞式IO
+		Buffer Channel Selector
+	
+3.Buffer
+	缓冲区，所谓的缓冲区其实就是在内存中开辟的一段连续空间，用来临时存放数据。
+
+	java.nio.Buffer
+		|--ByteBuffer, CharBuffer, DoubleBuffer, FloatBuffer, IntBuffer, LongBuffer, ShortBuffer
+
+	(0)三个标志位
+		int capacity() 
+			返回此缓冲区的容量。 
+		int position() 
+			返回此缓冲区的位置。 
+		Buffer position(int newPosition) 
+			设置此缓冲区的位置。 
+		int limit() 
+    		返回此缓冲区的限制。 
+	 	Buffer limit(int newLimit) 
+			设置此缓冲区的限制。 
+
+		在缓冲区中存在三个基础的游标，capacity-容量 limit-限制位 position-当前位
+		当缓冲区刚创建出来时，capacity指向缓冲区的容量即缓冲区的末尾位置，limit等于capacity，position等于0指向最开始的位置。
+		当向缓冲区写入数据时，会向position指定位置写入数据，并将position+1指向下一个写入位置，为后续接着写入做好准备。而position无论合适都不能大于limit，如果任何写入操作将会导致position大于limit则写入失败抛出异常。
+		在读取数据时，会将position指向位置中的数据返回，并将position+1指向下一个读取位置，如果任何读取操作造成postion大于limit则读取失败，抛出异常。
+		通常在写完数据要开始读取数据之前要将limit设置为和position相同，指定好边界，再将position设置为0，从头开始读取数据。可以通过flip方法便捷的去实现这个操作。
+
+	(1)创建Buffer
+		static ByteBuffer allocate(int capacity) 
+		static ByteBuffer wrap(byte[] array) 将 byte 数组包装到缓冲区中。 
+		static ByteBuffer wrap(byte[] array, int offset, int length) 将 byte 数组包装到缓冲区中。 
+
+	(2)向缓冲区写入数据
+		putXxx();
+
+	(3)获取数据
+		getXxx();
+
+	(4)反转缓冲区
+		flip();
+
+	(5)判断边界
+		int remaining()返回当前位置与限制之间的元素数。 
+		boolean hasRemaining()告知在当前位置和限制之间是否有元素。 
+
+	(6)重绕缓冲区
+		rewind()
+
+	(7)设置/重置 标记
+		mark()在此缓冲区的位置设置标记
+		reset()将此缓冲区的位置重置为以前标记的位置	
+
+	(8)清空缓冲区
+		clear()
+
+
+4.Channel
+	Channel叫做通道，与Stream不同，可以双向的进行数据通信
+
+	AbstractInterruptibleChannel
+		|- FileChannel
+		|- SelectableChannel 
+				|- AbstractSelectableChannel
+						|- ServerSocketChannel
+						|- SocketChannel
+
+	(1)ServerSocketChannel SocketChannel
+		实现NIO方式下的TCP通信的类
+		可以设置为非阻塞模式，在非阻塞模式下ACCEPT CONNECT READ WRITE方法都不产生阻塞
+		也就意味着 这四个方法被调用时 无论是否执行完成都不会阻塞而回继续执行之后的代码，不阻塞但是同时也无法确认是否执行成功，往往需要循环判断 手动控制执行
+
+		实验1：ACCEPT的非阻塞验证
+			ServerSocketChannel ssc = ServerSocketChannel.open();
+			ssc.configureBlocking(false);
+			ssc.bind(new InetSocketAddress(4444));
+			ssc.accept();
+
+		实验2：CONNECT的非阻塞验证
+			SocketChannel sc = SocketChannel.open();
+			sc.configureBlocking(false);
+			sc.connect(new InetSocketAddress("127.0.0.1",4444));
+
+
+		实验3：READ的非阻塞验证
+			SSCDemo01
+				ServerSocketChannel ssc = ServerSocketChannel.open();
+				ssc.configureBlocking(false);
+				ssc.bind(new InetSocketAddress(4444));
+				SocketChannel sc = null;
+				while(sc == null){
+					sc = ssc.accept();
+				}
+				sc.configureBlocking(false);
+				ByteBuffer buf = ByteBuffer.allocate(5);
+				sc.read(buf);
+			SCDemo01：
+				SocketChannel sc = SocketChannel.open();
+				sc.configureBlocking(false);
+				boolean isConn = sc.connect(new InetSocketAddress("127.0.0.1",4444));
+				while(!isConn){
+					isConn = sc.finishConnect();
+				}
+				while(true){}	
+
+		实验4：WRITE的非阻塞验证
+			SCDemo01
+				SocketChannel sc = SocketChannel.open();
+				sc.configureBlocking(false);
+				boolean isConn = sc.connect(new InetSocketAddress("127.0.0.1",4444));
+				while(!isConn){
+					isConn = sc.finishConnect();
+				}
+				int count = 0;
+				while(true){
+					int c = sc.write(ByteBuffer.wrap("a".getBytes()));
+					count += c;
+					System.out.println(count);
+				}
+			SSCDemo01
+				ServerSocketChannel ssc = ServerSocketChannel.open();
+				ssc.configureBlocking(false);
+				ssc.bind(new InetSocketAddress(4444));
+				SocketChannel sc = null;
+				while(sc == null){
+					sc = ssc.accept();
+				}
+				sc.configureBlocking(false);
+				while(true){}
+			
+	(2)DatagramChannel
+		实现NIO方式先的UDP通信的类
+		
+		DatagramChannel channel = DatagramChannel.open();
+		ByteBuffer buf = ….
+		channel.send(buf,new InetSocketAddress(“127.0.0.1”,8888));
+		channel.receive(buf);//如果收到的数据大于buf，则多出的数据将被抛弃
+
+	(3)FileChannel	
+	    略
+	    
+5.Selector
+	java.nio.channels.Selector
+
+	选择器
+		将多个通道注册到选择器中，进行管理，通过执行选择操作 选出当前时刻就绪的键，通道线程来处理，从而实现，少量线程来处理多客户端的场景。
+
+	获取选择器
+		Selector.open();
+
+	注册通道到选择器
+		public final SelectionKey register(Selector sel, int ops)
+			在ServerSocketChannle 和 SocketChannel上提供了register方法 来实现注册
+			其中sel是要注册到的选择器
+			ops是要注册的事件，可以有如下四个选择：
+				static int OP_ACCEPT 
+				static int OP_CONNECT 
+				static int OP_READ 
+				static int OP_WRITE  
+			返回一个SelectionKey对象，代表这次注册的键，通过这个键，可以获取到当前注册的通道 选择器  和 注册的事件信息。
+
+	选择器进行选择操作
+		int select();
+		此方法将会去选择之前注册在当前选择器中的所有的键，寻找其中已经就绪的键们，然后将就绪的键的数量返回。
+		如果没有任何通道对应的键就绪 则此方法阻塞 直到有任何通道就绪为止
+
+	获取已经就绪的键
+		Set<SelectionKey> selectedKeys()
+		获取已经就绪的键组成的集合
+
+	遍历键进行处理
+
+	案例：通过NIO实现 少量线程处理多个客户端连接
+
+6.粘包问题
+	由于TCP传输是一种可靠的连续的数据传输，如果两次传输的数据时间间隔比较短，数据的接收方可能很难判断出两次数据的边界在哪里，感觉就好像两个数据黏着在了一次，无法区分。
+
+	解决方案1:传输固定大小的数据，缺点是，很不灵活，有可能浪费传输空间
+	解决方案2:约定一个特殊的字符作为判断的边界，缺点是如果数据中本身就包含这个特殊字符可能还需要进行转义的操作
+	解决方案3:使用协议，通过协议传输数据量大小的方式来解决
+
+	HTTP Content-Length
+
+	案例：改造如上 NIO实现 通过自定义协议 来解决粘包问题
+		协议规则：现发送4个字节的数据长度 再发送数据 则读取数据时 每次都先读4个字节 为INT获取 数据真实长度
+		
+
+7.开源的NIO结构的服务器框架
+	MINA NETTY
+
+8.总结
+	BIO -- jdk1.0 -- BlockingIO -- 同步阻塞式IO -- 面向流操作字节字符 -- 单向传输
+	NIO -- jdk1.4 -- NonBlockingIO -- 同步非阻塞式IO -- 面向通道操作缓冲区 -- 双向传输
+	AIO -- jdk1.7 -- AnsyncronizeIO	-- 异步非阻塞式IO -- 大量的使用回调函数实现了异步IO操作
+
+	阻塞/非阻塞：是从线程的角度来考虑的，考虑线程是不是被挂起的状态
+	同步/异步：是从逻辑执行的角度来考虑的，考虑程序在处理一段逻辑时可否并行处理另一端逻辑
+
+
+9.作业
+	请独立完成 NIO通信功能 
+	实现 客户端发送 hello world 服务器打印后返回 hello nio 客户端收到后打印

@@ -9,3 +9,5 @@ alter table flux add partition (reportTime='2018-05-29') location '/flux/reportT
 create table dataclear (reportTime string,url string,urlname string,ref string,uagent string,uvid string,ssid string,sscount string,sstime string,cip string) row format delimited fields terminated by '|';
 
 ba zha hei
+
+good luck
