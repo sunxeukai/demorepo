@@ -1,0 +1,9 @@
+#新建外部表
+create external table flux (url string,urlname string,title string,chset string,scr string,col string,lg string,ej string,ec string,fv string,cn string,ref string,uagent string,stat_uv string,stat_ss string,cip string) partitioned by (reportTime string) row format delimited fields terminated by '|' location '/flux';
+
+#关联数据
+alter table flux add partition (reportTime='2018-05-29') location '/flux/reportTime=2018-05-29';
+
+#清洗数据
+#清洗出需要的字段
+create table dataclear (reportTime string,url string,urlname string,ref string,uagent string,uvid string,ssid string,sscount string,sstime string,cip string) row format delimited fields terminated by '|';
